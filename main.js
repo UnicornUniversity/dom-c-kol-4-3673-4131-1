@@ -1,119 +1,148 @@
 /**
- * Spouštěcí funkce aplikace.
- * Vygeneruje zaměstnance podle vstupních parametrů a vypočítá statistiky.
- * @param {object} dtoIn - vstupní parametry
- * @param {number} dtoIn.count - počet zaměstnanců k vygenerování
- * @param {number} dtoIn.min - minimální věk zaměstnanců
- * @param {number} dtoIn.max - maximální věk zaměstnanců
- * @returns {object} - objekt obsahující pole employees a statistiky stats
+ * Entry point of the application.
+ * Generates employees based on input parameters and calculates statistics.
+ * @param {object} dtoIn - input parameters
+ * @param {number} dtoIn.count - number of employees to generate
+ * @param {object} dtoIn.age - age interval
+ * @param {number} dtoIn.age.min - minimum age of employees
+ * @param {number} dtoIn.age.max - maximum age of employees
+ * @returns {object} - object containing employees and statistics
  */
 export function main(dtoIn) {
     const employees = generateEmployeeData(dtoIn);
     const stats = getEmployeeStatistics(employees);
-    return { employees, stats };
+
+    return {
+        employees,
+        sortedByWorkload: stats.sortedByWorkload,
+        ...stats
+    };
 }
 
+// ---------- Static lists of names and surnames ----------
+
+const names = [
+    "James","Mary","John","Patricia","Robert","Jennifer","Michael","Linda","William","Elizabeth",
+    "David","Barbara","Richard","Susan","Joseph","Jessica","Thomas","Sarah","Charles","Karen",
+    "Christopher","Nancy","Daniel","Lisa","Matthew","Betty","Anthony","Margaret","Mark","Sandra",
+    "Paul","Ashley","Steven","Kimberly","Andrew","Emily","Kenneth","Donna","Joshua","Michelle",
+    "Kevin","Dorothy","Brian","Carol","George","Amanda","Edward","Melissa","Ronald","Deborah"
+];
+
+const surnames = [
+    "Smith","Johnson","Williams","Brown","Jones","Garcia","Miller","Davis","Rodriguez","Martinez",
+    "Hernandez","Lopez","Gonzalez","Wilson","Anderson","Thomas","Taylor","Moore","Jackson","Martin",
+    "Lee","Perez","Thompson","White","Harris","Sanchez","Clark","Ramirez","Lewis","Robinson",
+    "Walker","Young","Allen","King","Wright","Scott","Torres","Nguyen","Hill","Flores",
+    "Green","Adams","Nelson","Baker","Hall","Rivera","Campbell","Mitchell","Carter","Roberts"
+];
+
+
 /**
- * Generuje náhodná data zaměstnanců.
- * Každý zaměstnanec má jméno, datum narození, věk (float), workload (int) a gender.
- * Věk je vypočítán přesně v intervalu <min, max> pomocí data narození.
- * @param {object} dtoIn - vstupní parametry
- * @param {number} dtoIn.count - počet zaměstnanců k vygenerování
- * @param {number} dtoIn.min - minimální věk zaměstnanců
- * @param {number} dtoIn.max - maximální věk zaměstnanců
- * @returns {Array<object>} - pole zaměstnanců s atributy:
- *   - name {string}
- *   - birthDate {string} (ISO formát)
- *   - age {number} (float, 1 desetinné místo)
- *   - workload {number} (int, 10–50)
- *   - gender {string} ("male" nebo "female")
+ * Generates random employee data.
+ * @param {object} dtoIn - input parameters
+ * @returns {Array<object>} - array of employees
  */
 export function generateEmployeeData(dtoIn) {
     const employees = [];
     const count = dtoIn.count || 10;
-    const minAge = dtoIn.min || 18;
-    const maxAge = dtoIn.max || 65;
+    const minAge = dtoIn.age?.min ?? 18;
+    const maxAge = dtoIn.age?.max ?? 65;
+
+    // ensure proper interval
+    const realMinAge = Math.min(minAge, maxAge);
+    const realMaxAge = Math.max(minAge, maxAge);
 
     const now = new Date();
     const msPerYear = 365.25 * 24 * 60 * 60 * 1000;
 
-    const maxBirthDate = new Date(now.getTime() - minAge * msPerYear);
-    const minBirthDate = new Date(now.getTime() - maxAge * msPerYear);
+    const maxBirthDate = new Date(now.getTime() - realMinAge * msPerYear);
+    const minBirthDate = new Date(now.getTime() - realMaxAge * msPerYear);
 
     for (let i = 0; i < count; i++) {
         const birthTime =
             minBirthDate.getTime() +
             Math.random() * (maxBirthDate.getTime() - minBirthDate.getTime());
         const birthDate = new Date(birthTime);
+        if (isNaN(birthDate.getTime())) {
+            continue; // skip invalid date
+        }
 
         const age = (now.getTime() - birthDate.getTime()) / msPerYear;
 
         employees.push({
-            name: `Employee_${i + 1}`,
-            birthDate: birthDate.toISOString(),
-            age: parseFloat(age.toFixed(1)),
-            workload: Math.floor(Math.random() * 41) + 10, 
+            name: names[Math.floor(Math.random() * names.length)],
+            surname: surnames[Math.floor(Math.random() * surnames.length)],
+            birthdate: birthDate.toISOString(),
+            age: roundTo1Decimal(age),
+            workload: (Math.floor(Math.random() * 4) + 1) * 10, // only 10,20,30,40
             gender: Math.random() < 0.5 ? "male" : "female",
         });
     }
 
     return employees;
+
 }
 
 /**
- * Vypočítá statistiky ze zaměstnanců.
- * Obsahuje total workload, median workload, average age, median age, min/max age a average women workload.
- * @param {Array<object>} employees - pole zaměstnanců
- * @returns {object} - statistiky zaměstnanců
+ * Calculates statistics from employees.
+ * @param {Array<object>} employees - array of employees
+ * @returns {object} - employee statistics
  */
 export function getEmployeeStatistics(employees) {
     const workloads = employees.map(e => e.workload);
     const ages = employees.map(e => e.age);
     const women = employees.filter(e => e.gender === "female");
 
+    // counts of employees by workload
+    const workloadCounts = {};
+    for (const w of workloads) {
+        workloadCounts[`workload${w}`] = (workloadCounts[`workload${w}`] || 0) + 1;
+    }
+
     return {
-        total: workloads.reduce((a, b) => a + b, 0),
-        medianWorkload: Math.round(median(workloads)),
-        averageAge: roundTo1Decimal(average(ages)),
-        medianAge: Math.round(median(ages)),
-        minAge: Math.round(Math.min(...ages)),
-        maxAge: Math.round(Math.max(...ages)),
-        averageWomenWorkload: women.length > 0
-            ? roundTo1Decimal(average(women.map(w => w.workload)))
-            : 0,
+        count: employees.length, // total number of employees
+        medianWorkload: workloads.length > 0 ? median(workloads) : NaN, // median workload
+        averageAge: ages.length > 0 ? roundTo1Decimal(average(ages)) : NaN, // average age rounded to 1 decimal
+        medianAge: ages.length > 0 ? median(ages) : NaN, // median age
+        minAge: ages.length > 0 ? Math.min(...ages) : NaN, // youngest employee
+        maxAge: ages.length > 0 ? Math.max(...ages) : NaN, // oldest employee
+        averageWomenWorkload: women.length > 0 ? roundTo1Decimal(average(women.map(w => w.workload))) : NaN, // average workload of women
+        sortedByWorkload: [...employees].sort((a, b) => a.workload - b.workload), // sorted by workload
+        ...workloadCounts // number of employees by workload
     };
 }
-
+// ---------- Helper functions ----------
 
 /**
- * Spočítá průměr hodnot.
- * @param {Array<number>} values - pole čísel
- * @returns {number} - průměr
+ * Calculates average of values.
+ * @param {number[]} values - array of numbers
+ * @returns {number} - average or NaN if empty
  */
 function average(values) {
+    if (values.length === 0) return NaN;
     const sum = values.reduce((a, b) => a + b, 0);
     return sum / values.length;
 }
 
 /**
- * Spočítá medián hodnot.
- * @param {Array<number>} values - pole čísel
- * @returns {number} - medián
+ * Calculates median of values.
+ * @param {number[]} values - array of numbers
+ * @returns {number} - median or 0 if empty
  */
 function median(values) {
+    if (values.length === 0) return NaN;
     const sorted = [...values].sort((a, b) => a - b);
     const mid = Math.floor(sorted.length / 2);
-    if (sorted.length % 2 === 0) {
-        return (sorted[mid - 1] + sorted[mid]) / 2;
-    } else {
-        return sorted[mid];
-    }
+    return sorted.length % 2 === 0
+        ? (sorted[mid - 1] + sorted[mid]) / 2
+        : sorted[mid];
 }
 
 /**
- * Zaokrouhlí číslo na 1 desetinné místo.
- * @param {number} num - číslo
- * @returns {number} - číslo zaokrouhlené na 1 desetinné místo
+ * Rounds a number to one decimal place.
+ * @param {number} num - number to round
+ * @returns {number} - rounded number
  */
 function roundTo1Decimal(num) {
     return parseFloat(num.toFixed(1));
